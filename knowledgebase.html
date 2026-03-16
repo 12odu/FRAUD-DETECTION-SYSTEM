@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Knowledge Base — BFDES</title>
+  <link rel="stylesheet" href="../css/main.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <nav class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon"><svg viewBox="0 0 40 40" fill="none"><polygon points="20,2 38,12 38,28 20,38 2,28 2,12" stroke="var(--accent)" stroke-width="2" fill="none"/><polygon points="20,8 32,15 32,25 20,32 8,25 8,15" fill="var(--accent)" opacity="0.15"/><circle cx="20" cy="20" r="4" fill="var(--accent)"/></svg></div>
+      <div><div class="brand-name">BFDES</div><div class="brand-sub">Fraud Detection Engine</div></div>
+    </div>
+    <ul class="nav-links">
+      <li><a href="../index.html" class="nav-link"><span class="nav-icon">◈</span>Dashboard</a></li>
+      <li><a href="analyze.html" class="nav-link"><span class="nav-icon">◎</span>Analyze Transaction</a></li>
+      <li><a href="knowledgebase.html" class="nav-link active"><span class="nav-icon">◫</span>Knowledge Base</a></li>
+      <li><a href="cases.html" class="nav-link"><span class="nav-icon">◧</span>Case Queue</a></li>
+      <li><a href="profiles.html" class="nav-link"><span class="nav-icon">◉</span>Customer Profiles</a></li>
+    </ul>
+    <div class="sidebar-status"><div class="status-dot pulse"></div><span>System Online</span></div>
+  </nav>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1 class="page-title">Knowledge Base</h1>
+        <span class="page-sub">Manage production rules and fraud detection logic</span>
+      </div>
+      <div class="topbar-right">
+        <button class="cta-btn secondary" id="btn-reset" style="font-size:10px;padding:6px 12px">⟳ Reset to Defaults</button>
+        <button class="cta-btn primary" id="btn-add" style="font-size:10px;padding:6px 12px">+ Add Rule</button>
+        <div class="clock" id="clock">--:--:--</div>
+      </div>
+    </header>
+
+    <div class="panel" style="margin:1.5rem 2rem">
+      <div class="panel-header">
+        <span class="panel-title">Production Rules</span>
+        <span class="panel-badge" id="rule-count">— rules</span>
+      </div>
+      <div class="kb-table-wrap">
+        <table id="kb-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>IF Condition</th>
+              <th>THEN Action</th>
+              <th>Weight</th>
+              <th>Category</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="kb-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- ADD/EDIT MODAL -->
+  <div class="modal-overlay" id="rule-modal">
+    <div class="modal">
+      <h2 id="modal-title">Add New Rule</h2>
+      <input type="hidden" id="m-edit-id" />
+      <div class="form-group" style="margin-bottom:0.8rem">
+        <label class="form-label">Rule ID</label>
+        <input class="form-input" id="m-id" placeholder="e.g. R11" />
+      </div>
+      <div class="form-group" style="margin-bottom:0.8rem">
+        <label class="form-label">IF Condition</label>
+        <input class="form-input" id="m-condition" placeholder="e.g. txn_amount > avg_amount × 10" />
+      </div>
+      <div class="form-group" style="margin-bottom:0.8rem">
+        <label class="form-label">THEN Action</label>
+        <input class="form-input" id="m-action" placeholder="e.g. Decline: Extreme High Value" />
+      </div>
+      <div class="form-group" style="margin-bottom:0.8rem">
+        <label class="form-label">Weight (−1.0 to +1.0; negative = mitigating)</label>
+        <input class="form-input" id="m-weight" type="number" min="-1" max="1" step="0.01" placeholder="e.g. 0.75" />
+      </div>
+      <div class="form-group" style="margin-bottom:0.8rem">
+        <label class="form-label">Category</label>
+        <select class="form-select" id="m-category">
+          <option>Location</option><option>Amount</option><option>Velocity</option><option>ATO</option>
+          <option>CNP</option><option>Mitigating</option><option>Time</option><option>Merchant</option><option>History</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="cta-btn secondary" id="modal-cancel">Cancel</button>
+        <button class="cta-btn primary" id="modal-save">Save Rule</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script>
+  function renderTable() {
+    const rules = getRules();
+    document.getElementById('rule-count').textContent = rules.length + ' rules';
+    const tbody = document.getElementById('kb-tbody');
+    tbody.innerHTML = rules.map((r, i) => `
+      <tr>
+        <td><span class="rule-id">${r.id}</span></td>
+        <td style="max-width:260px;font-size:11px;color:var(--text2)">${r.condition}</td>
+        <td style="max-width:200px;font-size:11px">${r.action}</td>
+        <td><span class="${r.weight > 0 ? 'weight-pos' : 'weight-neg'}">${r.weight > 0 ? '+' : ''}${r.weight}</span></td>
+        <td><span style="font-size:10px;color:var(--text3)">${r.category}</span></td>
+        <td>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px">
+            <input type="checkbox" ${r.active ? 'checked' : ''} onchange="toggleRule(${i}, this.checked)" />
+            <span style="color:${r.active ? 'var(--green)' : 'var(--text3)'}">${r.active ? 'Active' : 'Disabled'}</span>
+          </label>
+        </td>
+        <td>
+          <button class="edit-btn" onclick="editRule(${i})">Edit</button>
+          <button class="del-btn" onclick="deleteRule(${i})">Del</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function toggleRule(i, val) {
+    const rules = getRules();
+    rules[i].active = val;
+    saveRules(rules);
+    showToast('Rule ' + rules[i].id + (val ? ' activated.' : ' disabled.'));
+    renderTable();
+  }
+
+  function deleteRule(i) {
+    const rules = getRules();
+    if (!confirm('Delete rule ' + rules[i].id + '?')) return;
+    rules.splice(i, 1);
+    saveRules(rules);
+    showToast('Rule deleted.', 'error');
+    renderTable();
+  }
+
+  function editRule(i) {
+    const rules = getRules();
+    const r = rules[i];
+    document.getElementById('modal-title').textContent = 'Edit Rule';
+    document.getElementById('m-edit-id').value = i;
+    document.getElementById('m-id').value = r.id;
+    document.getElementById('m-condition').value = r.condition;
+    document.getElementById('m-action').value = r.action;
+    document.getElementById('m-weight').value = r.weight;
+    document.getElementById('m-category').value = r.category;
+    document.getElementById('rule-modal').classList.add('open');
+  }
+
+  document.getElementById('btn-add').onclick = () => {
+    document.getElementById('modal-title').textContent = 'Add New Rule';
+    document.getElementById('m-edit-id').value = '';
+    ['m-id','m-condition','m-action','m-weight'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('rule-modal').classList.add('open');
+  };
+
+  document.getElementById('modal-cancel').onclick = () => document.getElementById('rule-modal').classList.remove('open');
+
+  document.getElementById('modal-save').onclick = () => {
+    const id = document.getElementById('m-id').value.trim();
+    const condition = document.getElementById('m-condition').value.trim();
+    const action = document.getElementById('m-action').value.trim();
+    const weight = parseFloat(document.getElementById('m-weight').value);
+    const category = document.getElementById('m-category').value;
+    if (!id || !condition || !action || isNaN(weight)) { showToast('Please fill all fields.', 'error'); return; }
+    const rules = getRules();
+    const editIdx = document.getElementById('m-edit-id').value;
+    if (editIdx !== '') {
+      rules[parseInt(editIdx)] = { ...rules[parseInt(editIdx)], id, condition, action, weight, category };
+      showToast('Rule updated.', 'success');
+    } else {
+      rules.push({ id, condition, action, weight, category, active: true });
+      showToast('Rule added.', 'success');
+    }
+    saveRules(rules);
+    renderTable();
+    document.getElementById('rule-modal').classList.remove('open');
+  };
+
+  document.getElementById('btn-reset').onclick = () => {
+    if (!confirm('Reset knowledge base to default rules?')) return;
+    localStorage.removeItem('bfdes_rules');
+    showToast('Knowledge base reset.', 'success');
+    renderTable();
+  };
+
+  renderTable();
+  </script>
+</body>
+</html>

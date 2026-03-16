@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Case Queue — BFDES</title>
+  <link rel="stylesheet" href="../css/main.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <nav class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon"><svg viewBox="0 0 40 40" fill="none"><polygon points="20,2 38,12 38,28 20,38 2,28 2,12" stroke="var(--accent)" stroke-width="2" fill="none"/><polygon points="20,8 32,15 32,25 20,32 8,25 8,15" fill="var(--accent)" opacity="0.15"/><circle cx="20" cy="20" r="4" fill="var(--accent)"/></svg></div>
+      <div><div class="brand-name">BFDES</div><div class="brand-sub">Fraud Detection Engine</div></div>
+    </div>
+    <ul class="nav-links">
+      <li><a href="../index.html" class="nav-link"><span class="nav-icon">◈</span>Dashboard</a></li>
+      <li><a href="analyze.html" class="nav-link"><span class="nav-icon">◎</span>Analyze Transaction</a></li>
+      <li><a href="knowledgebase.html" class="nav-link"><span class="nav-icon">◫</span>Knowledge Base</a></li>
+      <li><a href="cases.html" class="nav-link active"><span class="nav-icon">◧</span>Case Queue</a></li>
+      <li><a href="profiles.html" class="nav-link"><span class="nav-icon">◉</span>Customer Profiles</a></li>
+    </ul>
+    <div class="sidebar-status"><div class="status-dot pulse"></div><span>System Online</span></div>
+  </nav>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1 class="page-title">Case Queue</h1>
+        <span class="page-sub">Review flagged transactions and submit analyst verdicts</span>
+      </div>
+      <div class="topbar-right">
+        <button class="cta-btn danger" id="btn-clear-all" style="font-size:10px;padding:6px 12px">Clear All Cases</button>
+        <div class="clock" id="clock">--:--:--</div>
+      </div>
+    </header>
+
+    <div class="panel" style="margin:1.5rem 2rem">
+      <div class="panel-header">
+        <span class="panel-title">Flagged Cases</span>
+        <span class="panel-badge" id="case-count">—</span>
+      </div>
+      <!-- Column Headers -->
+      <div class="case-item" style="background:var(--surface2);border-bottom:2px solid var(--border2);cursor:default">
+        <span style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3)">Case ID</span>
+        <span style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3)">Customer / Merchant</span>
+        <span style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3)">Score</span>
+        <span style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3)">Decision</span>
+        <span style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3)">Analyst Verdict</span>
+      </div>
+      <div class="case-list" id="case-list"></div>
+    </div>
+
+    <!-- CASE DETAIL MODAL -->
+    <div class="modal-overlay" id="case-modal">
+      <div class="modal" style="max-width:600px">
+        <h2 id="cm-title">Case Detail</h2>
+        <div id="cm-body"></div>
+        <div class="modal-actions">
+          <button class="cta-btn secondary" id="cm-close">Close</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="../js/main.js"></script>
+  <script>
+  function renderCases() {
+    const cases = getCases();
+    const list = document.getElementById('case-list');
+    document.getElementById('case-count').textContent = cases.length + ' cases';
+
+    if (cases.length === 0) {
+      list.innerHTML = `<div class="empty-state"><div class="empty-icon">◫</div><p>No cases yet. Run the Analyze Transaction engine to generate cases.</p></div>`;
+      return;
+    }
+
+    list.innerHTML = cases.map((c, i) => {
+      const color = { approve:'var(--green)', soft:'var(--yellow)', hold:'var(--orange)', decline:'var(--red)' }[c.classification === 'Approve' ? 'approve' : c.classification === 'Soft Alert' ? 'soft' : c.classification === 'Hold for Review' ? 'hold' : 'decline'] || 'var(--text)';
+      const verdictHTML = c.verdict
+        ? `<span style="font-size:10px;font-weight:700;color:${c.verdict === 'fraud' ? 'var(--red)' : c.verdict === 'fp' ? 'var(--green)' : 'var(--text3)'}">${c.verdict === 'fraud' ? '✓ CONFIRMED FRAUD' : c.verdict === 'fp' ? '✓ FALSE POSITIVE' : '? INCONCLUSIVE'}</span>`
+        : `<div class="verdict-btns">
+            <button class="v-btn confirm" onclick="submitVerdict(${i},'fraud')">Fraud</button>
+            <button class="v-btn fp" onclick="submitVerdict(${i},'fp')">False +</button>
+            <button class="v-btn" onclick="submitVerdict(${i},'inconclusive')" style="background:rgba(106,138,170,0.1);color:var(--text2);border:1px solid var(--border2)">Unclear</button>
+          </div>`;
+      return `
+        <div class="case-item" onclick="showDetail(${i})">
+          <span class="case-id">${c.id}</span>
+          <div>
+            <div style="font-size:12px;color:var(--text)">${c.customer}</div>
+            <div style="font-size:10px;color:var(--text3)">${c.merchant} · ${c.country} · ${timeAgo(c.timestamp)}</div>
+          </div>
+          <span class="case-risk ${c.risk_score >= 0.8 ? 'high' : 'med'}" style="color:${color}">${(c.risk_score * 100).toFixed(0)}%</span>
+          <span><span class="badge ${c.classification === 'Approve' ? 'approve' : c.classification === 'Soft Alert' ? 'soft' : c.classification === 'Hold for Review' ? 'hold' : 'decline'}">${c.classification.replace(' for Review','')}</span></span>
+          <div onclick="event.stopPropagation()">${verdictHTML}</div>
+        </div>`;
+    }).join('');
+  }
+
+  function submitVerdict(i, verdict) {
+    const cases = getCases();
+    cases[i].verdict = verdict;
+    saveCases(cases);
+    showToast('Verdict recorded: ' + verdict, 'success');
+    renderCases();
+  }
+
+  function showDetail(i) {
+    const c = getCases()[i];
+    document.getElementById('cm-title').textContent = c.id + ' — ' + c.customer;
+    document.getElementById('cm-body').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:1rem;font-size:12px">
+        <div style="color:var(--text2)">Amount: <b style="color:var(--text)">${fmtAmount(c.amount)}</b></div>
+        <div style="color:var(--text2)">Country: <b style="color:var(--text)">${c.country}</b></div>
+        <div style="color:var(--text2)">Merchant: <b style="color:var(--text)">${c.merchant}</b></div>
+        <div style="color:var(--text2)">Risk Score: <b style="color:var(--text)">${(c.risk_score * 100).toFixed(1)}%</b></div>
+        <div style="color:var(--text2)">Rules Fired: <b style="color:var(--text)">${c.rules_fired.join(', ') || 'None'}</b></div>
+        <div style="color:var(--text2)">Time: <b style="color:var(--text)">${new Date(c.timestamp).toLocaleString()}</b></div>
+      </div>
+      <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:0.5rem">Explanation</div>
+      <div class="explanation-text">${c.explanation}</div>
+    `;
+    document.getElementById('case-modal').classList.add('open');
+  }
+
+  document.getElementById('cm-close').onclick = () => document.getElementById('case-modal').classList.remove('open');
+
+  document.getElementById('btn-clear-all').onclick = () => {
+    if (!confirm('Clear all cases from the queue?')) return;
+    saveCases([]);
+    showToast('Case queue cleared.', 'error');
+    renderCases();
+  };
+
+  renderCases();
+  </script>
+</body>
+</html>
